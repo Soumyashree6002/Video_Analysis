@@ -178,9 +178,6 @@ expo start
 - React Navigation
 - react-native-svg
 
-## License
-
-MIT
 
 
 

@@ -11,7 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 const getBaseUrl = () => {
   if (__DEV__) {
     // Change this to your computer's IP address when testing on physical device
-    return 'http://10.199.9.160:8000/api/v1';
+    return 'http://10.25.178.160:8000/api/v1';
   }
   return 'https://your-production-api.com/api/v1';
 };
@@ -23,9 +23,6 @@ const BASE_URL_WITHOUT_API = API_BASE_URL.replace('/api/v1', '');
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 300000, // 5 minutes for large video uploads
-  headers: {
-    'Content-Type': 'multipart/form-data',
-  },
 });
 
 /**
