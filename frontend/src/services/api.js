@@ -31,19 +31,18 @@ const api = axios.create({
  * @param {Function} onProgress - Progress callback (progress: number) => void
  * @returns {Promise<{video_id: string, frame_url: string}>}
  */
+
 export const uploadVideo = async (videoUri, onProgress = null) => {
   try {
     const fileInfo = await FileSystem.getInfoAsync(videoUri);
-    
+
     if (!fileInfo.exists) {
       throw new Error('Video file not found');
     }
 
-    // For now, upload entire file
-    // TODO: Implement proper chunked upload for very large files (>200MB)
     const formData = new FormData();
     const filename = videoUri.split('/').pop() || 'video.mp4';
-    
+
     formData.append('chunk', {
       uri: videoUri,
       type: 'video/mp4',
@@ -51,19 +50,31 @@ export const uploadVideo = async (videoUri, onProgress = null) => {
     });
     formData.append('chunk_index', '0');
     formData.append('is_last', 'true');
-    
+
     const response = await api.post('/upload-video', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      onUploadProgress: (progressEvent) => {
-        if (onProgress && progressEvent.total) {
-          const progress = (progressEvent.loaded / progressEvent.total) * 100;
-          onProgress(progress);
-        }
+      onUploadProgress: (event) => {
+        if (!onProgress || !event.total) return;
+
+        // 🔒 Network progress ONLY (cap at 99%)
+        const rawPercent = (event.loaded / event.total) * 100;
+
+        const safePercent = Math.min(
+          99,
+          Math.max(0, Math.round(rawPercent))
+        );
+
+        onProgress(safePercent);
       },
     });
-    
+
+    // ✅ Upload + server processing DONE
+    if (onProgress) {
+      onProgress(100);
+    }
+
     return {
       video_id: response.data.video_id,
       frame_url: response.data.frame_url,

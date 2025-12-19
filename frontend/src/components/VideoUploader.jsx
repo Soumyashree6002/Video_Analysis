@@ -1,5 +1,5 @@
 /**
- * Video uploader component with progress indicator.
+ * Video uploader component with correct progress UX.
  */
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
@@ -9,6 +9,7 @@ import { uploadVideo } from '../services/api';
 const VideoUploader = ({ onUploadComplete, onError }) => {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [finalizing, setFinalizing] = useState(false);
 
   const pickVideo = async () => {
     try {
@@ -17,23 +18,33 @@ const VideoUploader = ({ onUploadComplete, onError }) => {
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled) {
-        return;
-      }
+      if (result.canceled) return;
 
       const videoUri = result.assets[0].uri;
+
       setUploading(true);
+      setFinalizing(false);
       setProgress(0);
 
       const response = await uploadVideo(videoUri, (progressValue) => {
-        setProgress(progressValue);
+        const safe = Math.min(99, Math.max(0, progressValue));
+        setProgress(safe);
+
+        if (safe === 99) {
+          setFinalizing(true);
+        }
       });
+
+      // Backend has confirmed upload
+      setFinalizing(true);
+      setProgress(100);
 
       setUploading(false);
       onUploadComplete(response, videoUri);
     } catch (error) {
       console.error('Upload error:', error);
       setUploading(false);
+      setFinalizing(false);
       onError(error.message || 'Failed to upload video');
     }
   };
@@ -49,17 +60,24 @@ const VideoUploader = ({ onUploadComplete, onError }) => {
           <View style={styles.uploadingContainer}>
             <ActivityIndicator size="small" color="#fff" />
             <Text style={styles.buttonText}>
-              Uploading... {Math.round(progress)}%
+              {finalizing
+                ? 'Finalizing upload…'
+                : `Uploading… ${progress}%`}
             </Text>
           </View>
         ) : (
           <Text style={styles.buttonText}>Select Video</Text>
         )}
       </TouchableOpacity>
-      
+
       {uploading && (
         <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${progress}%` }]} />
+          <View
+            style={[
+              styles.progressBar,
+              { width: `${progress}%` },
+            ]}
+          />
         </View>
       )}
     </View>
@@ -104,10 +122,3 @@ const styles = StyleSheet.create({
 });
 
 export default VideoUploader;
-
-
-
-
-
-
-
