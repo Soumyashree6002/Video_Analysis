@@ -7,12 +7,13 @@ import { useNavigation } from '@react-navigation/native';
 import useAnalysisStore from '../store/analysisStore';
 import { calibrateTap, getVideoFrameUrl } from '../services/api';
 import { validateDistance } from '../utils/validators';
-import SvgPointSelector from '../components/SvgPointSelector';
+import PrecisionPointSelector from '../components/PrecisionPointSelector';
 
 const CalibrationTapScreen = () => {
   const navigation = useNavigation();
   const { videoId, frameUrl, setCalibration } = useAnalysisStore();
-  const [points, setPoints] = useState([]);
+  const [point1, setPoint1] = useState(null);
+  const [point2, setPoint2] = useState(null);
   const [distance, setDistance] = useState('');
   const [loading, setLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
@@ -32,12 +33,14 @@ const CalibrationTapScreen = () => {
   }, [videoId, frameUrl]);
 
   const handlePointsSelected = (selectedPoints) => {
-    setPoints(selectedPoints);
+    // selectedPoints is [point1, point2] or [null, point2] or [point1, null]
+    if (selectedPoints[0] !== undefined) setPoint1(selectedPoints[0]);
+    if (selectedPoints[1] !== undefined) setPoint2(selectedPoints[1]);
   };
 
   const handleCalibrate = async () => {
-    if (points.length !== 2) {
-      Alert.alert('Error', 'Please select two points on the image');
+    if (!point1 || !point2) {
+      Alert.alert('Error', 'Please select both calibration points');
       return;
     }
 
@@ -52,8 +55,8 @@ const CalibrationTapScreen = () => {
     try {
       const result = await calibrateTap(
         videoId,
-        points[0],
-        points[1],
+        point1,
+        point2,
         distanceValue
       );
       setCalibration('tap', result);
@@ -78,19 +81,19 @@ const CalibrationTapScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Tap-Based Calibration</Text>
+        <Text style={styles.title}>Precision Calibration</Text>
         <Text style={styles.subtitle}>
-          Tap two points and enter the distance between them
+          Pan and zoom to position crosshair, then set two points
         </Text>
       </View>
       
       <View style={styles.content}>
-        <SvgPointSelector
+        <PrecisionPointSelector
           imageUri={imageUrl}
           onPointsSelected={handlePointsSelected}
         />
         
-        {points.length === 2 && (
+        {point1 && point2 && (
           <View style={styles.inputSection}>
             <Text style={styles.label}>Distance between points (cm)</Text>
             <TextInput
@@ -104,7 +107,7 @@ const CalibrationTapScreen = () => {
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleCalibrate}
-              disabled={loading}
+              disabled={loading || !point1 || !point2}
             >
               <Text style={styles.buttonText}>
                 {loading ? 'Calibrating...' : 'Continue'}

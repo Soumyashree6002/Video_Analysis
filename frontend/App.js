@@ -1,10 +1,13 @@
 /**
  * Main App component with navigation setup.
  */
+import 'react-native-gesture-handler';
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 
 // Screens
 import UploadScreen from './src/screens/UploadScreen';
@@ -19,25 +22,27 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="Upload"
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#fff' },
-          }}
-        >
-          <Stack.Screen name="Upload" component={UploadScreen} />
-          <Stack.Screen name="VideoTrim" component={VideoTrimScreen} />
-          <Stack.Screen name="CalibrationChoice" component={CalibrationChoiceScreen} />
-          <Stack.Screen name="CalibrationManual" component={CalibrationManualScreen} />
-          <Stack.Screen name="CalibrationTap" component={CalibrationTapScreen} />
-          <Stack.Screen name="Results" component={ResultsScreen} />
-          <Stack.Screen name="Report" component={ReportScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <Stack.Navigator
+            initialRouteName="Upload"
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#fff' },
+            }}
+          >
+            <Stack.Screen name="Upload" component={UploadScreen} />
+            <Stack.Screen name="VideoTrim" component={VideoTrimScreen} />
+            <Stack.Screen name="CalibrationChoice" component={CalibrationChoiceScreen} />
+            <Stack.Screen name="CalibrationManual" component={CalibrationManualScreen} />
+            <Stack.Screen name="CalibrationTap" component={CalibrationTapScreen} />
+            <Stack.Screen name="Results" component={ResultsScreen} />
+            <Stack.Screen name="Report" component={ReportScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
