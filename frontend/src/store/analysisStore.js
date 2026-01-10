@@ -37,6 +37,10 @@ const useAnalysisStore = create((set) => ({
     calibrationType: type,
     calibrationData: data,
   }),
+
+  setCalibrationPoints: (point1, point2) => set({ 
+    calibrationPoints: { point1, point2 } 
+  }),
   
   setAnalysisResults: (results) => set({
     analysisResults: results,

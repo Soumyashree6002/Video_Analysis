@@ -1,21 +1,15 @@
-/**
- * Tap-based calibration screen.
- */
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import useAnalysisStore from '../store/analysisStore';
-import { calibrateTap, getVideoFrameUrl } from '../services/api';
-import { validateDistance } from '../utils/validators';
+import { getVideoFrameUrl } from '../services/api';
 import PrecisionPointSelector from '../components/PrecisionPointSelector';
 
 const CalibrationTapScreen = () => {
   const navigation = useNavigation();
-  const { videoId, frameUrl, setCalibration } = useAnalysisStore();
+  const { videoId, frameUrl, setCalibrationPoints } = useAnalysisStore();
   const [point1, setPoint1] = useState(null);
   const [point2, setPoint2] = useState(null);
-  const [distance, setDistance] = useState('');
-  const [loading, setLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
 
   useEffect(() => {
@@ -33,40 +27,65 @@ const CalibrationTapScreen = () => {
   }, [videoId, frameUrl]);
 
   const handlePointsSelected = (selectedPoints) => {
-    // selectedPoints is [point1, point2] or [null, point2] or [point1, null]
-    if (selectedPoints[0] !== undefined) setPoint1(selectedPoints[0]);
-    if (selectedPoints[1] !== undefined) setPoint2(selectedPoints[1]);
+    // Handle null case (Reset All)
+    if (selectedPoints === null || selectedPoints === undefined) {
+      setPoint1(null);
+      setPoint2(null);
+      return;
+    }
+
+    // Handle array of points [point1, point2]
+    // Each can be a coordinate object or null
+    if (Array.isArray(selectedPoints)) {
+      if (selectedPoints.length >= 1) {
+        setPoint1(selectedPoints[0]);
+      }
+      if (selectedPoints.length >= 2) {
+        setPoint2(selectedPoints[1]);
+      }
+    }
   };
 
-  const handleCalibrate = async () => {
+  const validatePoints = () => {
     if (!point1 || !point2) {
       Alert.alert('Error', 'Please select both calibration points');
-      return;
+      return false;
     }
 
-    const distanceValue = parseFloat(distance);
-    const validation = validateDistance(distanceValue);
-    if (!validation.valid) {
-      Alert.alert('Invalid Input', validation.error);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await calibrateTap(
-        videoId,
-        point1,
-        point2,
-        distanceValue
+    // Check if points are the same
+    if (point1.x === point2.x && point1.y === point2.y) {
+      Alert.alert(
+        'Invalid Points', 
+        'Point 1 and Point 2 cannot be at the same location. Please select two different points on the image.'
       );
-      setCalibration('tap', result);
-      navigation.navigate('Results');
-    } catch (error) {
-      console.error('Calibration error:', error);
-      Alert.alert('Error', 'Failed to perform calibration. Please try again.');
-    } finally {
-      setLoading(false);
+      return false;
     }
+
+    // Check if points are too close (optional - helps avoid precision issues)
+    const distanceBetweenPoints = Math.sqrt(
+      Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
+    );
+    
+    if (distanceBetweenPoints < 10) {
+      Alert.alert(
+        'Points Too Close', 
+        'The selected points are too close together. Please select points that are at least 10 pixels apart for accurate calibration.'
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleContinue = () => {
+    // Validate points first
+    if (!validatePoints()) {
+      return;
+    }
+
+    // Save points to store and navigate to distance input screen
+    setCalibrationPoints(point1, point2);
+    navigation.navigate('CalibrationDistance');
   };
 
   if (!imageUrl) {
@@ -81,40 +100,31 @@ const CalibrationTapScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Precision Calibration</Text>
+        <Text style={styles.title}>Select Calibration Points</Text>
         <Text style={styles.subtitle}>
-          Pan and zoom to position crosshair, then set two points
+          Pan and zoom to position crosshair precisely on two reference points
         </Text>
       </View>
       
+      {/* PrecisionPointSelector fills all available space */}
       <View style={styles.content}>
         <PrecisionPointSelector
           imageUri={imageUrl}
           onPointsSelected={handlePointsSelected}
         />
-        
-        {point1 && point2 && (
-          <View style={styles.inputSection}>
-            <Text style={styles.label}>Distance between points (cm)</Text>
-            <TextInput
-              style={styles.input}
-              value={distance}
-              onChangeText={setDistance}
-              placeholder="Enter distance"
-              keyboardType="decimal-pad"
-            />
-            
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleCalibrate}
-              disabled={loading || !point1 || !point2}
-            >
-              <Text style={styles.buttonText}>
-                {loading ? 'Calibrating...' : 'Continue'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+      </View>
+
+      {/* Fixed bottom button - always visible */}
+      <View style={styles.bottomButton}>
+        <TouchableOpacity
+          style={[styles.button, (!point1 || !point2) && styles.buttonDisabled]}
+          onPress={handleContinue}
+          disabled={!point1 || !point2}
+        >
+          <Text style={styles.buttonText}>
+            {point1 && point2 ? 'Continue to Distance Input' : 'Select Both Points to Continue'}
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -154,35 +164,26 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  inputSection: {
+  bottomButton: {
     padding: 20,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 10,
-  },
-  input: {
-    borderWidth: 2,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 18,
-    backgroundColor: '#fff',
-    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
   button: {
     backgroundColor: '#3498db',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    opacity: 0.6,
+    backgroundColor: '#bdc3c7',
   },
   buttonText: {
     color: '#fff',
@@ -192,7 +193,3 @@ const styles = StyleSheet.create({
 });
 
 export default CalibrationTapScreen;
-
-
-
-

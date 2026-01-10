@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   runOnJS,
-  useAnimatedReaction,
 } from 'react-native-reanimated';
 import Svg, { Circle, Line } from 'react-native-svg';
 
@@ -14,6 +13,8 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CROSSHAIR_SIZE = 40;
 const MIN_ZOOM = 1.0;
 const MAX_ZOOM = 5.0;
+// Use percentage of screen height instead of fixed height
+const IMAGE_HEIGHT = SCREEN_HEIGHT * 0.5; // 50% of screen height
 
 const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
   // Image dimensions and layout
@@ -28,7 +29,7 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
   const savedTranslateY = useSharedValue(0);
   const savedScale = useSharedValue(1.0);
 
-  // Synced state for coordinate calculations (updated from worklet)
+  // Synced state for coordinate calculations (updated only when gesture ends)
   const [currentScale, setCurrentScale] = useState(1.0);
   const [currentTranslateX, setCurrentTranslateX] = useState(0);
   const [currentTranslateY, setCurrentTranslateY] = useState(0);
@@ -40,20 +41,12 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
   // Fine adjustment step size
   const [stepSize, setStepSize] = useState(1); // 1px or 5px
 
-  // Sync SharedValues to React state for coordinate calculations
-  useAnimatedReaction(
-    () => ({
-      scale: scale.value,
-      x: translateX.value,
-      y: translateY.value,
-    }),
-    (current) => {
-      runOnJS(setCurrentScale)(current.scale);
-      runOnJS(setCurrentTranslateX)(current.x);
-      runOnJS(setCurrentTranslateY)(current.y);
-    },
-    [scale, translateX, translateY]
-  );
+  // Sync transform values to React state (called only when gesture ends)
+  const syncTransformToJS = (scaleVal, translateXVal, translateYVal) => {
+    setCurrentScale(scaleVal);
+    setCurrentTranslateX(translateXVal);
+    setCurrentTranslateY(translateYVal);
+  };
 
   /**
    * Calculate displayed image dimensions and offsets (letterboxing)
@@ -124,6 +117,9 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
         scale.value = withSpring(MAX_ZOOM);
         savedScale.value = MAX_ZOOM;
       }
+      
+      // Sync to JS thread only when gesture ends
+      runOnJS(syncTransformToJS)(scale.value, translateX.value, translateY.value);
     });
 
   const panGesture = Gesture.Pan()
@@ -139,18 +135,15 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
       constrainPan();
+      
+      // Sync to JS thread only when gesture ends
+      runOnJS(syncTransformToJS)(scale.value, translateX.value, translateY.value);
     });
 
   const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
   /**
    * Convert screen coordinates (where crosshair is) to image coordinates.
-   * 
-   * FIXED MATH:
-   * The transformation is: screen = (image * scale) + translate + offset
-   * So to reverse it: image = (screen - translate - offset) / scale
-   * 
-   * Then we map from displayed coordinates to actual image pixel coordinates
    */
   const getImageCoordinateUnderCrosshair = () => {
     const displayInfo = getImageDisplayInfo();
@@ -160,37 +153,27 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     const containerWidth = imageLayout.width;
     const containerHeight = imageLayout.height;
 
-    // Crosshair is at the center of the container
     const crosshairScreenX = containerWidth / 2;
     const crosshairScreenY = containerHeight / 2;
 
-    // The displayed image center in screen coordinates (before zoom/pan)
     const imageCenterScreenX = offsetX + displayedWidth / 2;
     const imageCenterScreenY = offsetY + displayedHeight / 2;
 
-    // Calculate position relative to image center
-    // When we zoom/pan, transformations are relative to the image center
     const relativeX = (crosshairScreenX - imageCenterScreenX - currentTranslateX) / currentScale;
     const relativeY = (crosshairScreenY - imageCenterScreenY - currentTranslateY) / currentScale;
 
-    // Convert from center-relative to top-left relative (displayed image coordinates)
     const displayX = relativeX + displayedWidth / 2;
     const displayY = relativeY + displayedHeight / 2;
 
-    // Map displayed coordinates to actual image pixel coordinates
     const imageX = (displayX / displayedWidth) * imageNaturalSize.width;
     const imageY = (displayY / displayedHeight) * imageNaturalSize.height;
 
-    // Clamp to image bounds and round
     return {
       x: Math.max(0, Math.min(imageNaturalSize.width, Math.round(imageX))),
       y: Math.max(0, Math.min(imageNaturalSize.height, Math.round(imageY))),
     };
   };
 
-  /**
-   * Set point 1 at current crosshair position.
-   */
   const handleSetPoint1 = () => {
     const coord = getImageCoordinateUnderCrosshair();
     setPoint1(coord);
@@ -199,9 +182,6 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     }
   };
 
-  /**
-   * Set point 2 at current crosshair position.
-   */
   const handleSetPoint2 = () => {
     const coord = getImageCoordinateUnderCrosshair();
     setPoint2(coord);
@@ -210,9 +190,6 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     }
   };
 
-  /**
-   * Fine adjustment: nudge a point by delta pixels in image space.
-   */
   const adjustPoint = (deltaX, deltaY, pointIndex) => {
     const delta = deltaX !== 0 ? { x: deltaX * stepSize, y: 0 } : { x: 0, y: deltaY * stepSize };
     
@@ -237,27 +214,18 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     }
   };
 
-  /**
-   * Convert image coordinates to screen coordinates for rendering markers.
-   * 
-   * FIXED MATH:
-   * Transformation: screen = (image * scale) + translate + offset
-   */
   const imageToScreen = (imageX, imageY) => {
     const displayInfo = getImageDisplayInfo();
     if (!displayInfo) return { x: 0, y: 0 };
 
     const { displayedWidth, displayedHeight, offsetX, offsetY } = displayInfo;
 
-    // Convert image pixel coordinates to displayed coordinates
     const displayX = (imageX / imageNaturalSize.width) * displayedWidth;
     const displayY = (imageY / imageNaturalSize.height) * displayedHeight;
 
-    // Convert to center-relative coordinates
     const relativeX = displayX - displayedWidth / 2;
     const relativeY = displayY - displayedHeight / 2;
 
-    // Apply zoom and pan transformations around center
     const imageCenterScreenX = offsetX + displayedWidth / 2;
     const imageCenterScreenY = offsetY + displayedHeight / 2;
 
@@ -267,7 +235,6 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     return { x: screenX, y: screenY };
   };
 
-  // Animated styles for zoom/pan
   const animatedImageStyle = useAnimatedStyle(() => {
     return {
       transform: [
@@ -278,7 +245,6 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     };
   });
 
-  // Handle image load
   const handleImageLoad = (event) => {
     const { width, height } = event.nativeEvent.source;
     setImageNaturalSize({ width, height });
@@ -289,7 +255,6 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     setImageLayout({ x, y, width, height });
   };
 
-  // Reset zoom/pan
   const resetView = () => {
     scale.value = withSpring(1.0);
     translateX.value = withSpring(0);
@@ -297,9 +262,11 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     savedScale.value = 1.0;
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
+    
+    // Sync to JS thread after reset
+    syncTransformToJS(1.0, 0, 0);
   };
 
-  // Render crosshair at image container center
   const renderCrosshair = () => {
     const containerWidth = imageLayout.width;
     const containerHeight = imageLayout.height;
@@ -345,7 +312,6 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     );
   };
 
-  // Render point markers
   const renderMarkers = () => {
     if (!point1 && !point2) return null;
 
@@ -413,7 +379,6 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
     );
   };
 
-  // Calculate distance between points for debugging
   const calculateDistance = () => {
     if (!point1 || !point2) return null;
     const dx = point2.x - point1.x;
@@ -425,193 +390,203 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.instruction}>
-        Pan and zoom the image, then position the crosshair over your calibration points
-      </Text>
+      {/* Fixed-height image section */}
+      <View style={styles.imageSection}>
+        <Text style={styles.instruction}>
+          Pan and zoom the image, then position the crosshair over your calibration points
+        </Text>
 
-      <View style={styles.imageWrapper} onLayout={handleImageLayout}>
-        <GestureDetector gesture={composedGesture}>
-          <Animated.View style={[styles.imageContainer, animatedImageStyle]}>
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.image}
-              resizeMode="contain"
-              onLoad={handleImageLoad}
-            />
-          </Animated.View>
-        </GestureDetector>
-        {renderCrosshair()}
-        {renderMarkers()}
-      </View>
-
-      {/* Point selection buttons */}
-      <View style={styles.controlsRow}>
-        <TouchableOpacity
-          style={[styles.setButton, point1 && styles.setButtonActive]}
-          onPress={handleSetPoint1}
-        >
-          <Text style={[styles.setButtonText, point1 && styles.setButtonTextActive]}>
-            Set Point 1
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.setButton, point2 && styles.setButtonActive]}
-          onPress={handleSetPoint2}
-        >
-          <Text style={[styles.setButtonText, point2 && styles.setButtonTextActive]}>
-            Set Point 2
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Coordinate display */}
-      {(point1 || point2) && (
-        <View style={styles.coordinateDisplay}>
-          {point1 && (
-            <Text style={styles.coordinateText}>
-              Point 1: ({point1.x.toFixed(1)}, {point1.y.toFixed(1)}) px
-            </Text>
-          )}
-          {point2 && (
-            <Text style={styles.coordinateText}>
-              Point 2: ({point2.x.toFixed(1)}, {point2.y.toFixed(1)}) px
-            </Text>
-          )}
-          {distance && (
-            <Text style={[styles.coordinateText, styles.distanceText]}>
-              Distance: {distance.toFixed(2)} px
-            </Text>
-          )}
+        <View style={styles.imageWrapper} onLayout={handleImageLayout}>
+          <GestureDetector gesture={composedGesture}>
+            <Animated.View style={[styles.imageContainer, animatedImageStyle]}>
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.image}
+                resizeMode="contain"
+                onLoad={handleImageLoad}
+              />
+            </Animated.View>
+          </GestureDetector>
+          {renderCrosshair()}
+          {renderMarkers()}
         </View>
-      )}
+      </View>
 
-      {/* Fine adjustment controls */}
-      {(point1 || point2) && (
-        <View style={styles.adjustmentSection}>
-          <Text style={styles.adjustmentLabel}>
-            Fine Adjust (Step: {stepSize}px)
-          </Text>
+      {/* Scrollable controls section */}
+      <ScrollView 
+        style={styles.controlsSection}
+        contentContainerStyle={styles.controlsContent}
+        showsVerticalScrollIndicator={true}
+      >
+        {/* Point selection buttons */}
+        <View style={styles.controlsRow}>
           <TouchableOpacity
-            style={styles.stepToggle}
-            onPress={() => setStepSize(stepSize === 1 ? 5 : 1)}
+            style={[styles.setButton, point1 && styles.setButtonActive]}
+            onPress={handleSetPoint1}
           >
-            <Text style={styles.stepToggleText}>
-              {stepSize === 1 ? 'Switch to 5px' : 'Switch to 1px'}
+            <Text style={[styles.setButtonText, point1 && styles.setButtonTextActive]}>
+              Set Point 1
             </Text>
           </TouchableOpacity>
-
-          {point1 && (
-            <View style={styles.adjustmentGroup}>
-              <Text style={styles.adjustmentGroupLabel}>Point 1:</Text>
-              <View style={styles.arrowGrid}>
-                <View style={styles.arrowRow}>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(0, -1, 1)}
-                  >
-                    <Text style={styles.arrowText}>↑</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.arrowRow}>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(-1, 0, 1)}
-                  >
-                    <Text style={styles.arrowText}>←</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(1, 0, 1)}
-                  >
-                    <Text style={styles.arrowText}>→</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.arrowRow}>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(0, 1, 1)}
-                  >
-                    <Text style={styles.arrowText}>↓</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {point2 && (
-            <View style={styles.adjustmentGroup}>
-              <Text style={styles.adjustmentGroupLabel}>Point 2:</Text>
-              <View style={styles.arrowGrid}>
-                <View style={styles.arrowRow}>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(0, -1, 2)}
-                  >
-                    <Text style={styles.arrowText}>↑</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.arrowRow}>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(-1, 0, 2)}
-                  >
-                    <Text style={styles.arrowText}>←</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(1, 0, 2)}
-                  >
-                    <Text style={styles.arrowText}>→</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.arrowRow}>
-                  <TouchableOpacity
-                    style={styles.arrowButton}
-                    onPress={() => adjustPoint(0, 1, 2)}
-                  >
-                    <Text style={styles.arrowText}>↓</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
+          <TouchableOpacity
+            style={[styles.setButton, point2 && styles.setButtonActive]}
+            onPress={handleSetPoint2}
+          >
+            <Text style={[styles.setButtonText, point2 && styles.setButtonTextActive]}>
+              Set Point 2
+            </Text>
+          </TouchableOpacity>
         </View>
-      )}
 
-      {/* Reset controls */}
-      <View style={styles.resetRow}>
-        <TouchableOpacity
-          style={[styles.resetButton, !point1 && styles.resetButtonDisabled]}
-          onPress={() => {
-            setPoint1(null);
-            if (point2) onPointsSelected?.([null, point2]);
-          }}
-          disabled={!point1}
-        >
-          <Text style={styles.resetButtonText}>Reset Point 1</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.resetButton, !point2 && styles.resetButtonDisabled]}
-          onPress={() => {
-            setPoint2(null);
-            if (point1) onPointsSelected?.([point1, null]);
-          }}
-          disabled={!point2}
-        >
-          <Text style={styles.resetButtonText}>Reset Point 2</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.resetButton}
-          onPress={() => {
-            setPoint1(null);
-            setPoint2(null);
-            resetView();
-            onPointsSelected?.(null);
-          }}
-        >
-          <Text style={styles.resetButtonText}>Reset All</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Coordinate display */}
+        {(point1 || point2) && (
+          <View style={styles.coordinateDisplay}>
+            {point1 && (
+              <Text style={styles.coordinateText}>
+                Point 1: ({point1.x.toFixed(1)}, {point1.y.toFixed(1)}) px
+              </Text>
+            )}
+            {point2 && (
+              <Text style={styles.coordinateText}>
+                Point 2: ({point2.x.toFixed(1)}, {point2.y.toFixed(1)}) px
+              </Text>
+            )}
+            {distance && (
+              <Text style={[styles.coordinateText, styles.distanceText]}>
+                Distance: {distance.toFixed(2)} px
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Fine adjustment controls */}
+        {(point1 || point2) && (
+          <View style={styles.adjustmentSection}>
+            <Text style={styles.adjustmentLabel}>
+              Fine Adjust (Step: {stepSize}px)
+            </Text>
+            <TouchableOpacity
+              style={styles.stepToggle}
+              onPress={() => setStepSize(stepSize === 1 ? 5 : 1)}
+            >
+              <Text style={styles.stepToggleText}>
+                {stepSize === 1 ? 'Switch to 5px' : 'Switch to 1px'}
+              </Text>
+            </TouchableOpacity>
+
+            {point1 && (
+              <View style={styles.adjustmentGroup}>
+                <Text style={styles.adjustmentGroupLabel}>Point 1:</Text>
+                <View style={styles.arrowGrid}>
+                  <View style={styles.arrowRow}>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(0, -1, 1)}
+                    >
+                      <Text style={styles.arrowText}>↑</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.arrowRow}>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(-1, 0, 1)}
+                    >
+                      <Text style={styles.arrowText}>←</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(1, 0, 1)}
+                    >
+                      <Text style={styles.arrowText}>→</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.arrowRow}>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(0, 1, 1)}
+                    >
+                      <Text style={styles.arrowText}>↓</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {point2 && (
+              <View style={styles.adjustmentGroup}>
+                <Text style={styles.adjustmentGroupLabel}>Point 2:</Text>
+                <View style={styles.arrowGrid}>
+                  <View style={styles.arrowRow}>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(0, -1, 2)}
+                    >
+                      <Text style={styles.arrowText}>↑</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.arrowRow}>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(-1, 0, 2)}
+                    >
+                      <Text style={styles.arrowText}>←</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(1, 0, 2)}
+                    >
+                      <Text style={styles.arrowText}>→</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.arrowRow}>
+                    <TouchableOpacity
+                      style={styles.arrowButton}
+                      onPress={() => adjustPoint(0, 1, 2)}
+                    >
+                      <Text style={styles.arrowText}>↓</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Reset controls */}
+        <View style={styles.resetRow}>
+          <TouchableOpacity
+            style={[styles.resetButton, !point1 && styles.resetButtonDisabled]}
+            onPress={() => {
+              setPoint1(null);
+              if (point2) onPointsSelected?.([null, point2]);
+            }}
+            disabled={!point1}
+          >
+            <Text style={styles.resetButtonText}>Reset Point 1</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.resetButton, !point2 && styles.resetButtonDisabled]}
+            onPress={() => {
+              setPoint2(null);
+              if (point1) onPointsSelected?.([point1, null]);
+            }}
+            disabled={!point2}
+          >
+            <Text style={styles.resetButtonText}>Reset Point 2</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.resetButton}
+            onPress={() => {
+              setPoint1(null);
+              setPoint2(null);
+              resetView();
+              onPointsSelected?.(null);
+            }}
+          >
+            <Text style={styles.resetButtonText}>Reset All</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </View>
   );
 };
@@ -620,7 +595,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    padding: 16,
+  },
+  imageSection: {
+    height: IMAGE_HEIGHT,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   instruction: {
     fontSize: 14,
@@ -634,7 +613,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: 8,
     overflow: 'hidden',
-    marginBottom: 12,
   },
   imageContainer: {
     width: '100%',
@@ -643,6 +621,13 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  controlsSection: {
+    flex: 1,
+  },
+  controlsContent: {
+    padding: 16,
+    paddingTop: 8,
   },
   controlsRow: {
     flexDirection: 'row',
@@ -737,6 +722,7 @@ const styles = StyleSheet.create({
   resetRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    marginBottom: 20,
   },
   resetButton: {
     flex: 1,

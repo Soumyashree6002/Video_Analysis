@@ -15,6 +15,7 @@ import VideoTrimScreen from './src/screens/VideoTrimScreen';
 import CalibrationChoiceScreen from './src/screens/CalibrationChoiceScreen';
 import CalibrationManualScreen from './src/screens/CalibrationManualScreen';
 import CalibrationTapScreen from './src/screens/CalibrationTapScreen';
+import CalibrationDistanceScreen from './src/screens/CalibrationDistanceScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import ReportScreen from './src/screens/ReportScreen';
 
@@ -37,6 +38,11 @@ export default function App() {
             <Stack.Screen name="CalibrationChoice" component={CalibrationChoiceScreen} />
             <Stack.Screen name="CalibrationManual" component={CalibrationManualScreen} />
             <Stack.Screen name="CalibrationTap" component={CalibrationTapScreen} />
+            <Stack.Screen 
+              name="CalibrationDistance" 
+              component={CalibrationDistanceScreen}
+              options={{ title: 'Enter Distance' }}
+            />
             <Stack.Screen name="Results" component={ResultsScreen} />
             <Stack.Screen name="Report" component={ReportScreen} />
           </Stack.Navigator>
