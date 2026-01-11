@@ -7,7 +7,7 @@
  * - Backend is only given timestamps; it does NOT handle preview or trimming.
  */
 import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Video } from 'expo-av';
 import Slider from '@react-native-community/slider';
@@ -30,6 +30,11 @@ const VideoTrimScreen = () => {
   // True while the user is actively scrubbing with the slider
   const [isSeeking, setIsSeeking] = useState(false);
   const seekTimeout = useRef(null);
+
+  // Manual entry modal states
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [manualInput, setManualInput] = useState('');
 
   const formatTime = (seconds) => {
     // Display with 2 decimal places for research-grade precision (no rounding of internal values)
@@ -113,13 +118,67 @@ const VideoTrimScreen = () => {
     if (endTime < t) setEndTime(t);
   };
 
-
   const handleMarkEnd = () => {
     const t = Math.min(Math.max(currentTime, 0), duration);
     setEndTime(t);
     if (startTime > t) setStartTime(t);
   };
 
+  const handleOpenStartModal = () => {
+    setManualInput(startTime.toFixed(2));
+    setShowStartModal(true);
+  };
+
+  const handleOpenEndModal = () => {
+    setManualInput(endTime.toFixed(2));
+    setShowEndModal(true);
+  };
+
+  const handleConfirmManualStart = async () => {
+    const value = parseFloat(manualInput);
+    if (isNaN(value)) {
+      Alert.alert('Invalid Input', 'Please enter a valid number.');
+      return;
+    }
+    if (value < 0 || value > duration) {
+      Alert.alert('Out of Range', `Time must be between 0 and ${duration.toFixed(2)} seconds.`);
+      return;
+    }
+    
+    // Set the start time
+    setStartTime(value);
+    if (endTime < value) setEndTime(value);
+    
+    // Update current time and seek to it
+    setCurrentTime(value);
+    await seekTo(value);
+    
+    setShowStartModal(false);
+    setManualInput('');
+  };
+
+  const handleConfirmManualEnd = async () => {
+    const value = parseFloat(manualInput);
+    if (isNaN(value)) {
+      Alert.alert('Invalid Input', 'Please enter a valid number.');
+      return;
+    }
+    if (value < 0 || value > duration) {
+      Alert.alert('Out of Range', `Time must be between 0 and ${duration.toFixed(2)} seconds.`);
+      return;
+    }
+    
+    // Set the end time
+    setEndTime(value);
+    if (startTime > value) setStartTime(value);
+    
+    // Update current time and seek to it
+    setCurrentTime(value);
+    await seekTo(value);
+    
+    setShowEndModal(false);
+    setManualInput('');
+  };
 
   const handleConfirmRange = async () => {
     if (!videoId || !videoUri) {
@@ -144,7 +203,6 @@ const VideoTrimScreen = () => {
         Alert.alert('Error', 'Failed to save time range. Please try again.');
         }
     };
-
 
   return (
     <View style={styles.container}>
@@ -209,23 +267,39 @@ const VideoTrimScreen = () => {
           <View style={styles.rangeColumn}>
             <Text style={styles.rangeLabel}>Start</Text>
             <Text style={styles.rangeValue}>{formatTime(startTime)}</Text>
-            <TouchableOpacity
-              style={styles.rangeButton}
-              onPress={handleMarkStart}
-            >
-              <Text style={styles.rangeButtonText}>Set Start</Text>
-            </TouchableOpacity>
+            <View style={styles.rangeButtonsRow}>
+              <TouchableOpacity
+                style={styles.rangeButton}
+                onPress={handleMarkStart}
+              >
+                <Text style={styles.rangeButtonText}>Set Start</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.manualButton}
+                onPress={handleOpenStartModal}
+              >
+                <Text style={styles.manualButtonText}>✎</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.rangeColumn}>
             <Text style={styles.rangeLabel}>End</Text>
             <Text style={styles.rangeValue}>{formatTime(endTime)}</Text>
-            <TouchableOpacity
-              style={styles.rangeButton}
-              onPress={handleMarkEnd}
-            >
-              <Text style={styles.rangeButtonText}>Set End</Text>
-            </TouchableOpacity>
+            <View style={styles.rangeButtonsRow}>
+              <TouchableOpacity
+                style={styles.rangeButton}
+                onPress={handleMarkEnd}
+              >
+                <Text style={styles.rangeButtonText}>Set End</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.manualButton}
+                onPress={handleOpenEndModal}
+              >
+                <Text style={styles.manualButtonText}>✎</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -240,6 +314,86 @@ const VideoTrimScreen = () => {
           <Text style={styles.confirmButtonText}>Confirm Time Range</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Manual Start Time Modal */}
+      <Modal
+        visible={showStartModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStartModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Enter Start Time</Text>
+            <Text style={styles.modalSubtitle}>Time in seconds (0 - {duration.toFixed(2)})</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={manualInput}
+              onChangeText={setManualInput}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              autoFocus={true}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButtonCancel}
+                onPress={() => {
+                  setShowStartModal(false);
+                  setManualInput('');
+                }}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButtonConfirm}
+                onPress={handleConfirmManualStart}
+              >
+                <Text style={styles.modalButtonTextConfirm}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Manual End Time Modal */}
+      <Modal
+        visible={showEndModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEndModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Enter End Time</Text>
+            <Text style={styles.modalSubtitle}>Time in seconds (0 - {duration.toFixed(2)})</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={manualInput}
+              onChangeText={setManualInput}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              autoFocus={true}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButtonCancel}
+                onPress={() => {
+                  setShowEndModal(false);
+                  setManualInput('');
+                }}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButtonConfirm}
+                onPress={handleConfirmManualEnd}
+              >
+                <Text style={styles.modalButtonTextConfirm}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -344,6 +498,11 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
     marginBottom: 8,
   },
+  rangeButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   rangeButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -354,6 +513,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2c3e50',
     fontWeight: '500',
+  },
+  manualButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3498db',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manualButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
   },
   confirmButton: {
     marginTop: 4,
@@ -368,6 +540,70 @@ const styles = StyleSheet.create({
   confirmButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '80%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalButtonCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#ecf0f1',
+    alignItems: 'center',
+  },
+  modalButtonTextCancel: {
+    fontSize: 16,
+    color: '#2c3e50',
+    fontWeight: '600',
+  },
+  modalButtonConfirm: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#3498db',
+    alignItems: 'center',
+  },
+  modalButtonTextConfirm: {
+    fontSize: 16,
+    color: '#fff',
     fontWeight: '600',
   },
 });
