@@ -19,9 +19,14 @@ const UploadScreen = () => {
   };
 
   const handleError = (errorMessage) => {
-    setError(errorMessage);
-    Alert.alert('Upload Error', errorMessage, [{ text: 'OK' }]);
-  };
+  if (!errorMessage) {
+    setError(null);
+    return;
+  }
+
+  setError(errorMessage);
+  Alert.alert('Upload Error', errorMessage, [{ text: 'OK' }]);
+};
 
   return (
     <View style={styles.container}>

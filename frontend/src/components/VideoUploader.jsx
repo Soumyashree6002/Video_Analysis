@@ -11,13 +11,16 @@ const VideoUploader = ({ onUploadComplete, onError }) => {
   const abortControllerRef = useRef(null);
   const uploadingRef = useRef(false);
 
-  // keep ref in sync for cancel-safe UI updates
+  // Sync ref for defensive progress guard
   useEffect(() => {
     uploadingRef.current = uploading;
   }, [uploading]);
 
   const pickVideo = async () => {
     try {
+      // Clear any previous error from UI
+      onError?.(null);
+
       const result = await DocumentPicker.getDocumentAsync({
         type: 'video/*',
         copyToCacheDirectory: true,
@@ -27,30 +30,28 @@ const VideoUploader = ({ onUploadComplete, onError }) => {
 
       const videoUri = result.assets[0].uri;
 
-      // setup upload state
+      abortControllerRef.current = new AbortController();
+
       setUploading(true);
       setFinalizing(false);
       setProgress(0);
-      abortControllerRef.current = new AbortController();
 
       const response = await uploadVideo(
         videoUri,
         (p) => {
-          if (!uploadingRef.current) return; // prevent late updates
-
+          if (!uploadingRef.current) return; // Prevent late UI updates
           const safe = Math.min(99, Math.max(0, p));
           setProgress(safe);
-          if (safe === 99) {
-            setFinalizing(true);
-          }
+          if (safe === 99) setFinalizing(true);
         },
         abortControllerRef.current.signal
       );
 
-      // success
+      // Success
       setProgress(100);
-      setFinalizing(false);
       setUploading(false);
+      setFinalizing(false);
+      onError?.(null);
 
       onUploadComplete?.(response, videoUri);
     } catch (error) {
@@ -60,19 +61,24 @@ const VideoUploader = ({ onUploadComplete, onError }) => {
         console.error('Upload error:', error);
         onError?.(error.message || 'Failed to upload video');
       }
+
+      // Reset UI after error or cancel
+      setUploading(false);
+      setFinalizing(false);
+      setProgress(0);
     } finally {
-      // always cleanup controller
+      // Single place for cleanup
       abortControllerRef.current = null;
     }
   };
 
   const cancelUpload = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    abortControllerRef.current?.abort(); // Do NOT cleanup here
+
     setUploading(false);
     setFinalizing(false);
     setProgress(0);
+    onError?.(null); // Clear stale errors
   };
 
   return (
