@@ -1,15 +1,20 @@
-/**
- * Video uploader component with correct progress UX.
- */
-import React, { useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadVideo } from '../services/api';
 
 const VideoUploader = ({ onUploadComplete, onError }) => {
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [finalizing, setFinalizing] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const abortControllerRef = useRef(null);
+  const uploadingRef = useRef(false);
+
+  // keep ref in sync for cancel-safe UI updates
+  useEffect(() => {
+    uploadingRef.current = uploading;
+  }, [uploading]);
 
   const pickVideo = async () => {
     try {
@@ -22,62 +27,78 @@ const VideoUploader = ({ onUploadComplete, onError }) => {
 
       const videoUri = result.assets[0].uri;
 
+      // setup upload state
       setUploading(true);
       setFinalizing(false);
       setProgress(0);
+      abortControllerRef.current = new AbortController();
 
-      const response = await uploadVideo(videoUri, (progressValue) => {
-        const safe = Math.min(99, Math.max(0, progressValue));
-        setProgress(safe);
+      const response = await uploadVideo(
+        videoUri,
+        (p) => {
+          if (!uploadingRef.current) return; // prevent late updates
 
-        if (safe === 99) {
-          setFinalizing(true);
-        }
-      });
+          const safe = Math.min(99, Math.max(0, p));
+          setProgress(safe);
+          if (safe === 99) {
+            setFinalizing(true);
+          }
+        },
+        abortControllerRef.current.signal
+      );
 
-      // Backend has confirmed upload
-      setFinalizing(true);
+      // success
       setProgress(100);
-
-      setUploading(false);
-      onUploadComplete(response, videoUri);
-    } catch (error) {
-      console.error('Upload error:', error);
-      setUploading(false);
       setFinalizing(false);
-      onError(error.message || 'Failed to upload video');
+      setUploading(false);
+
+      onUploadComplete?.(response, videoUri);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        onCancel && onCancel();
+      } else {
+        console.error('Upload error:', error);
+        onError?.(error.message || 'Failed to upload video');
+      }
+    } finally {
+      // always cleanup controller
+      abortControllerRef.current = null;
     }
+  };
+
+  const cancelUpload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setUploading(false);
+    setFinalizing(false);
+    setProgress(0);
   };
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={[styles.button, uploading && styles.buttonDisabled]}
-        onPress={pickVideo}
-        disabled={uploading}
-      >
-        {uploading ? (
-          <View style={styles.uploadingContainer}>
+      {!uploading ? (
+        <TouchableOpacity style={styles.button} onPress={pickVideo}>
+          <Text style={styles.buttonText}>Select Video</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.uploadContainer}>
+          <View style={styles.uploadStatusRow}>
             <ActivityIndicator size="small" color="#fff" />
             <Text style={styles.buttonText}>
-              {finalizing
-                ? 'Finalizing upload…'
-                : `Uploading… ${progress}%`}
+              {finalizing ? 'Finalizing upload…' : `Uploading… ${progress}%`}
             </Text>
           </View>
-        ) : (
-          <Text style={styles.buttonText}>Select Video</Text>
-        )}
-      </TouchableOpacity>
+
+          <TouchableOpacity style={styles.cancelButton} onPress={cancelUpload}>
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {uploading && (
         <View style={styles.progressBarContainer}>
-          <View
-            style={[
-              styles.progressBar,
-              { width: `${progress}%` },
-            ]}
-          />
+          <View style={[styles.progressBar, { width: `${progress}%` }]} />
         </View>
       )}
     </View>
@@ -95,18 +116,29 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
   buttonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  uploadingContainer: {
+  uploadContainer: {
+    backgroundColor: '#2c3e50',
+    padding: 16,
+    borderRadius: 8,
+  },
+  uploadStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  cancelButton: {
+    marginTop: 10,
+    alignSelf: 'flex-end',
+  },
+  cancelText: {
+    color: '#ff6b6b',
+    fontSize: 14,
+    fontWeight: '500',
   },
   progressBarContainer: {
     marginTop: 10,

@@ -11,7 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 const getBaseUrl = () => {
   if (__DEV__) {
     // Change this to your computer's IP address when testing on physical device
-    return 'http://10.145.66.203:8000/api/v1';
+    return 'http://10.145.62.26:8000/api/v1';
   }
   return 'https://your-production-api.com/api/v1';
 };
@@ -32,10 +32,9 @@ const api = axios.create({
  * @returns {Promise<{video_id: string, frame_url: string}>}
  */
 
-export const uploadVideo = async (videoUri, onProgress = null) => {
+export const uploadVideo = async (videoUri, onProgress = null, signal = undefined) => {
   try {
     const fileInfo = await FileSystem.getInfoAsync(videoUri);
-
     if (!fileInfo.exists) {
       throw new Error('Video file not found');
     }
@@ -48,42 +47,43 @@ export const uploadVideo = async (videoUri, onProgress = null) => {
       type: 'video/mp4',
       name: filename,
     });
+
     formData.append('chunk_index', '0');
     formData.append('is_last', 'true');
 
     const response = await api.post('/upload-video', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (event) => {
         if (!onProgress || !event.total) return;
-
-        // 🔒 Network progress ONLY (cap at 99%)
-        const rawPercent = (event.loaded / event.total) * 100;
-
-        const safePercent = Math.min(
-          99,
-          Math.max(0, Math.round(rawPercent))
-        );
-
-        onProgress(safePercent);
+        const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
+        onProgress(percent);
       },
+      signal, 
     });
 
-    // ✅ Upload + server processing DONE
-    if (onProgress) {
-      onProgress(100);
-    }
+    if (onProgress) onProgress(100);
 
     return {
       video_id: response.data.video_id,
       frame_url: response.data.frame_url,
     };
   } catch (error) {
+    // 🔴 Robust cancellation detection
+    if (
+      axios.isCancel(error) ||
+      error.name === 'CanceledError' ||
+      error.code === 'ERR_CANCELED'
+    ) {
+      const abortError = new Error('Upload canceled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+
     console.error('Upload error:', error);
     throw error;
   }
 };
+
 
 /**
  * Get video frame image URL.
