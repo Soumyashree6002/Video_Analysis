@@ -62,9 +62,7 @@ const CalibrationTapScreen = () => {
     }
 
     // Check if points are too close (optional - helps avoid precision issues)
-    const distanceBetweenPoints = Math.sqrt(
-      Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
-    );
+    const distanceBetweenPoints = Math.abs(point2.y - point1.y); 
     
     if (distanceBetweenPoints < 10) {
       Alert.alert(

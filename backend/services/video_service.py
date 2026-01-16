@@ -1,165 +1,157 @@
 """
-Video processing service for handling uploads and frame extraction.
+Improved hybrid video processing service with safe upload,
+first-frame extraction, metadata, and hybrid sampling strategy.
 """
-import cv2
-import os
-from pathlib import Path
-from typing import Optional, Tuple
-from fastapi import UploadFile, HTTPException
 
-from backend.core.config import settings
-from backend.utils.file_utils import get_video_path, get_frame_path, generate_video_id
+import cv2
+from pathlib import Path
+from fastapi import HTTPException
+
+from backend.utils.file_utils import get_video_path, get_frame_path
 
 
 def save_uploaded_video_chunk(video_id: str, chunk: bytes, chunk_index: int, is_last: bool) -> None:
-    """
-    Save a video chunk to disk.
-    
-    Args:
-        video_id: Unique video identifier
-        chunk: Binary chunk data
-        chunk_index: Index of the chunk (0-based)
-        is_last: Whether this is the last chunk
-    """
     video_path = get_video_path(video_id)
-    
-    # Append chunk to file
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+
     mode = 'ab' if chunk_index > 0 else 'wb'
     with open(video_path, mode) as f:
         f.write(chunk)
 
+    if is_last:
+        if not video_path.exists() or video_path.stat().st_size == 0:
+            raise HTTPException(status_code=500, detail="Final video chunk write failed")
+
 
 def extract_first_frame(video_id: str) -> Path:
-    """
-    Extract the first frame from a video and save it as an image.
-    
-    Args:
-        video_id: Unique video identifier
-    
-    Returns:
-        Path to the saved frame image
-    
-    Raises:
-        HTTPException: If video cannot be opened or frame cannot be extracted
-    """
     video_path = get_video_path(video_id)
     frame_path = get_frame_path(video_id)
-    
+
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video file not found")
-    
-    # Open video file
+
     cap = cv2.VideoCapture(str(video_path))
-    
     if not cap.isOpened():
         raise HTTPException(status_code=500, detail="Failed to open video file")
-    
+
     try:
-        # Read first frame
         ret, frame = cap.read()
-        
-        if not ret or frame is None:
-            raise HTTPException(status_code=500, detail="Failed to read frame from video")
-        
-        # Save frame as JPEG
+        if not ret:
+            raise HTTPException(status_code=500, detail="Failed to read first frame")
+
+        frame_path.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(frame_path), frame)
-        
-        if not frame_path.exists():
-            raise HTTPException(status_code=500, detail="Failed to save frame image")
-        
         return frame_path
-    
+
     finally:
         cap.release()
 
 
 def get_video_info(video_id: str) -> dict:
-    """
-    Get video metadata (duration, fps, resolution).
-    
-    Args:
-        video_id: Unique video identifier
-    
-    Returns:
-        Dictionary with video information
-    """
     video_path = get_video_path(video_id)
-    
+
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video file not found")
-    
+
     cap = cv2.VideoCapture(str(video_path))
-    
     if not cap.isOpened():
         raise HTTPException(status_code=500, detail="Failed to open video file")
-    
+
     try:
         fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            raise HTTPException(status_code=500, detail="Invalid FPS detected")
+
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        duration = frame_count / fps if fps > 0 else 0
-        
+
+        duration = frame_count / fps
+
         return {
-            'fps': float(fps),
-            'frame_count': frame_count,
-            'width': width,
-            'height': height,
-            'duration': float(duration)
+            "fps": float(fps),
+            "frame_count": frame_count,
+            "width": width,
+            "height": height,
+            "duration": float(duration),
         }
+
     finally:
         cap.release()
 
 
-def extract_frames_in_range(video_id: str, start_time: float, end_time: float) -> list:
+def extract_frames_in_range(video_id: str, start_time: float, end_time: float, max_frames: int = 200) -> list:
     """
-    Extract frames within a time range for analysis.
-    
-    Args:
-        video_id: Unique video identifier
-        start_time: Start time in seconds
-        end_time: End time in seconds
-    
-    Returns:
-        List of frames (numpy arrays) with timestamps
+    Hybrid sampling strategy:
+    - If codec seek is accurate -> uses direct seeking (fast)
+    - Else -> sequential fallback for accuracy
     """
+
     video_path = get_video_path(video_id)
-    
+
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video file not found")
-    
+
     cap = cv2.VideoCapture(str(video_path))
-    
     if not cap.isOpened():
         raise HTTPException(status_code=500, detail="Failed to open video file")
-    
+
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0:
+        raise HTTPException(status_code=500, detail="Invalid FPS")
+
     start_frame = int(start_time * fps)
     end_frame = int(end_time * fps)
-    
+    total_frames = max(0, end_frame - start_frame + 1)
+
+    if total_frames <= max_frames:
+        frame_indices = list(range(start_frame, end_frame + 1))
+    else:
+        step = total_frames / max_frames
+        frame_indices = [int(start_frame + i * step) for i in range(max_frames)]
+
     frames_data = []
-    
+
     try:
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        
-        current_frame = start_frame
-        while current_frame <= end_frame:
-            ret, frame = cap.read()
-            
-            if not ret:
-                break
-            
-            timestamp = current_frame / fps
-            frames_data.append({
-                'frame': frame,
-                'timestamp': timestamp,
-                'frame_number': current_frame
-            })
-            
-            current_frame += 1
-    
+
+        # test if seeking works reliably
+        test_idx = frame_indices[len(frame_indices)//2]
+        cap.set(cv2.CAP_PROP_POS_FRAMES, test_idx)
+        ret, test_frame = cap.read()
+        seek_works = bool(ret and test_frame is not None)
+
+        if seek_works:
+            # Fast seek-based sampling
+            for idx in frame_indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                frames_data.append({
+                    "frame": frame,
+                    "timestamp": idx / fps,
+                    "frame_number": idx,
+                })
+        else:
+            # Accurate sequential fallback
+            current = start_frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            frame_index_set = set(frame_indices)
+
+            while current <= end_frame:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if current in frame_index_set:
+                    frames_data.append({
+                        "frame": frame,
+                        "timestamp": current / fps,
+                        "frame_number": current,
+                    })
+                current += 1
+
     finally:
         cap.release()
-    
-    return frames_data
 
+    return frames_data
