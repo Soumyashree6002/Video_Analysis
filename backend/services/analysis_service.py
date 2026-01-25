@@ -1,6 +1,3 @@
-"""
-Analysis service for viscosity calculation and graph generation.
-"""
 import cv2
 import numpy as np
 import matplotlib
@@ -18,10 +15,10 @@ from backend.services.video_service import extract_frames_in_range
 
 def extract_height_from_frame(frame: np.ndarray, cm_per_pixel: float) -> float:
     """
-    Extract liquid height from a video frame.
+    Extract liquid height from a video frame using color-based detection.
     
-    This is a simplified implementation. In practice, this would use
-    computer vision techniques to detect the liquid surface level.
+    Uses HSV color space to detect blue liquid and finds the topmost point
+    of the liquid surface to calculate height.
     
     Args:
         frame: Video frame as numpy array (BGR format)
@@ -30,34 +27,38 @@ def extract_height_from_frame(frame: np.ndarray, cm_per_pixel: float) -> float:
     Returns:
         Height in centimeters
     """
-    # Convert to grayscale for processing
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Convert to HSV for better color detection
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     
-    # Apply edge detection to find liquid surface
-    edges = cv2.Canny(gray, 50, 150)
+    # Define range for blue color
+    lower_blue = np.array([88, 45, 40])
+    upper_blue = np.array([130, 255, 255])
     
-    # Find horizontal lines (liquid surface)
-    # This is a simplified approach - actual implementation would be more sophisticated
-    height, width = edges.shape
+    # Create mask for blue color
+    mask = cv2.inRange(hsv, lower_blue, upper_blue)
     
-    # Find the bottom-most horizontal edge (assuming liquid fills from bottom)
-    # In practice, you'd use more sophisticated CV techniques
-    surface_y = height
+    # Apply morphological operations to clean up the mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     
-    for y in range(height - 1, -1, -1):
-        # Check if there's a significant horizontal edge at this row
-        row_edges = np.sum(edges[y, :])
-        if row_edges > width * 0.1:  # Threshold: 10% of row has edges
-            surface_y = y
-            break
+    # Find contours
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Calculate height from bottom of frame
-    pixel_height = height - surface_y
-    
-    # Convert to centimeters
-    height_cm = pixel_height * cm_per_pixel
-    
-    return height_cm
+    if contours:
+        # Find the largest contour (assuming it's the liquid)
+        largest_contour = max(contours, key=cv2.contourArea)
+        
+        # Get the topmost point of the contour (liquid front)
+        topmost = tuple(largest_contour[largest_contour[:, :, 1].argmin()][0])
+        
+        # Convert to centimeters
+        height_cm = topmost * cm_per_pixel
+        
+        return height_cm
+    else:
+        # No liquid detected, return 0
+        return 0.0
 
 
 def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict:
