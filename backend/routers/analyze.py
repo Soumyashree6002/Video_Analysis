@@ -108,9 +108,9 @@ async def analyze(background_tasks: BackgroundTasks, request: AnalyzeRequest):
         return AnalysisResponse(
             video_id=request.video_id,
             viscosity=results['viscosity'],
-            slope=results['slope'],
-            intercept=results['intercept'],
-            r_value=results.get('r_value'),
+            a=results['a'],     
+            b=results['b'],      
+            r_squared=results.get('r_squared'),
             graph_url=results['graph_url'],
             message="Analysis completed successfully"
         )

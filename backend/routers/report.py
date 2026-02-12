@@ -7,7 +7,7 @@ from typing import Optional
 
 from backend.utils.file_utils import get_report_path, cleanup_temp_files
 from backend.services.report_service import generate_report
-from backend.services.analysis_service import analyze_viscosity
+from backend.services.analysis_service import analyze_viscosity, get_cached_analysis
 from backend.services.calibration_service import calibration_service
 from backend.routers.analyze import _time_ranges
 
@@ -57,15 +57,19 @@ async def get_report(background_tasks: BackgroundTasks, video_id: str):
         
         try:
             # Run analysis to get results
-            results = analyze_viscosity(video_id, time_range['start_time'], time_range['end_time'])
+            results = get_cached_analysis(video_id)
+
+            if results is None:
+                results = analyze_viscosity(video_id, time_range['start_time'], time_range['end_time'])
+
             
             # Generate report
             generate_report(
                 video_id,
                 results['viscosity'],
-                results['slope'],
-                results['intercept'],
-                results.get('r_value')
+                results['a'],
+                results['b'],
+                results.get('r_squared')
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")

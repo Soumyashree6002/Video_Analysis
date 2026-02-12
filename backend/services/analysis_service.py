@@ -8,10 +8,11 @@ from pathlib import Path
 
 from backend.core.config import settings
 from backend.utils.file_utils import get_graph_path
-from backend.utils.math_utils import linear_regression, calculate_viscosity
+from backend.utils.math_utils import power_law_regression, calculate_viscosity
 from backend.services.calibration_service import calibration_service
 from backend.services.video_service import extract_frames_in_range
 
+_analysis_cache = {}
 
 def extract_height_from_frame(frame: np.ndarray, cm_per_pixel: float) -> float:
     """
@@ -52,8 +53,12 @@ def extract_height_from_frame(frame: np.ndarray, cm_per_pixel: float) -> float:
         # Get the topmost point of the contour (liquid front)
         topmost = tuple(largest_contour[largest_contour[:, :, 1].argmin()][0])
         
+        # Calculate height from bottom of frame to liquid surface
+        height = frame.shape[0]  # Get frame height
+        pixel_height = height - topmost[1]  # topmost[1] is the y-coordinate
+        
         # Convert to centimeters
-        height_cm = topmost * cm_per_pixel
+        height_cm = pixel_height * cm_per_pixel
         
         return height_cm
     else:
@@ -85,6 +90,13 @@ def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict
     if len(frames_data) == 0:
         raise ValueError("No frames found in the specified time range")
     
+    # Get reference height from the first frame
+    first_frame = frames_data[0]['frame']
+    reference_height_cm = extract_height_from_frame(first_frame, cm_per_pixel)
+    
+    if reference_height_cm == 0.0:
+        raise ValueError("No liquid detected in first frame - cannot set reference point")
+    
     # Extract height for each frame
     time_data = []
     height_data = []
@@ -93,52 +105,82 @@ def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict
         timestamp = frame_info['timestamp']
         frame = frame_info['frame']
         
-        # Extract height from frame
-        height_cm = extract_height_from_frame(frame, cm_per_pixel)
+        # Extract height using the existing function
+        current_height_cm = extract_height_from_frame(frame, cm_per_pixel)
         
-        time_data.append(timestamp - start_time)  # Relative time from start
-        height_data.append(height_cm)
+        # Calculate height change relative to reference (current - reference)
+        # This gives the rise in liquid level from the initial position
+        height_change_cm = current_height_cm - reference_height_cm
+        
+        # Store relative time from start
+        relative_time = timestamp - start_time
+        
+        time_data.append(relative_time)
+        height_data.append(height_change_cm)
     
     if len(time_data) < 2:
         raise ValueError("Need at least 2 data points for analysis")
     
-    # Perform linear regression
-    regression_result = linear_regression(time_data, height_data)
-    slope = regression_result['slope']
-    intercept = regression_result['intercept']
+    # Filter out data points that violate power-law constraints
+    # Power-law requires: time > 0 and height > 0
+    filtered_time = []
+    filtered_height = []
+    min_positive_value = 1e-6  # Small positive value to avoid exactly zero
+    
+    for t, h in zip(time_data, height_data):
+        # Skip first point if time is 0, and skip any points with non-positive height
+        if t > min_positive_value and h > min_positive_value:
+            filtered_time.append(t)
+            filtered_height.append(h)
+    
+    if len(filtered_time) < 2:
+        raise ValueError("Not enough valid data points for power-law regression (need time > 0 and height > 0)")
+    
+    # Perform power-law regression on filtered data
+    regression_result = power_law_regression(filtered_time, filtered_height)
+    a = regression_result['a']
+    b = regression_result['b']
     
     # Calculate viscosity
-    viscosity = calculate_viscosity(slope)
+    viscosity = calculate_viscosity(a)
     
-    # Generate graph
-    graph_path = generate_graph(video_id, time_data, height_data, slope, intercept)
+    # Generate graph using ALL data (including filtered out points for visualization)
+    graph_path = generate_graph(video_id, time_data, height_data, filtered_time, filtered_height, a, b)
     
     # Generate graph URL (relative to static files)
     # The URL will be served by FastAPI static file mount
     graph_url = f"/static/graphs/{graph_path.name}"
-    
-    return {
-        'viscosity': viscosity,
-        'slope': slope,
-        'intercept': intercept,
-        'r_value': regression_result['r_value'],
+    results = {'viscosity': viscosity,
+        'a': a,
+        'b': b,
+        'r_squared': regression_result['r_squared'],
         'graph_url': graph_url,
         'time_data': time_data,
-        'height_data': height_data
-    }
+        'height_data': height_data,
+        'filtered_time_data': filtered_time,
+        'filtered_height_data': filtered_height}
+
+    _analysis_cache[video_id] = results
+    return results
+
+def get_cached_analysis(video_id: str):
+    return _analysis_cache.get(video_id)
 
 
-def generate_graph(video_id: str, time_data: List[float], height_data: List[float], 
-                   slope: float, intercept: float) -> Path:
+def generate_graph(video_id: str, time_data: List[float], height_data: List[float],
+                   filtered_time: List[float], filtered_height: List[float],
+                   a: float, b: float) -> Path:
     """
-    Generate a matplotlib graph showing height vs time with fitted line.
+    Generate a matplotlib graph showing height vs time with fitted power-law curve.
     
     Args:
         video_id: Unique video identifier
-        time_data: List of time values (seconds)
-        height_data: List of height values (cm)
-        slope: Slope from linear regression
-        intercept: Intercept from linear regression
+        time_data: List of all time values (seconds)
+        height_data: List of all height values (cm)
+        filtered_time: List of time values used in regression (seconds)
+        filtered_height: List of height values used in regression (cm)
+        a: Coefficient from power-law regression (height = a * time^b)
+        b: Exponent from power-law regression
     
     Returns:
         Path to the saved graph image
@@ -156,17 +198,21 @@ def generate_graph(video_id: str, time_data: List[float], height_data: List[floa
         except OSError:
             plt.style.use('default')
     
-    # Plot data points
-    plt.scatter(time_data, height_data, alpha=0.6, s=50, label='Measured Data', color='#2c3e50')
+    # Plot all measured data points (including those excluded from regression)
+    plt.scatter(time_data, height_data, alpha=0.4, s=30, label='All Measured Data', color='#95a5a6')
     
-    # Plot fitted line
-    time_array = np.array(time_data)
-    fitted_line = slope * time_array + intercept
-    plt.plot(time_array, fitted_line, 'r-', linewidth=2, label=f'Fitted Line: y = {slope:.4f}x + {intercept:.4f}')
+    # Highlight filtered data points used in regression
+    plt.scatter(filtered_time, filtered_height, alpha=0.8, s=50, label='Data Used in Fit', color='#2c3e50')
+    
+    # Plot fitted power-law curve over the range of filtered data
+    if len(filtered_time) > 0:
+        time_array = np.linspace(min(filtered_time), max(filtered_time), 100)
+        fitted_curve = a * time_array**b
+        plt.plot(time_array, fitted_curve, 'r-', linewidth=2, label=f'Fitted Curve: y = {a:.4f}x^{b:.4f}')
     
     # Labels and title
     plt.xlabel('Time (s)', fontsize=12, fontweight='bold')
-    plt.ylabel('Height (cm)', fontsize=12, fontweight='bold')
+    plt.ylabel('Height Change (cm)', fontsize=12, fontweight='bold')
     plt.title('Liquid Height vs Time', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
@@ -179,4 +225,3 @@ def generate_graph(video_id: str, time_data: List[float], height_data: List[floa
     plt.close()
     
     return graph_path
-

@@ -72,13 +72,19 @@ def power_law_regression(time_data: list, height_data: list) -> Dict[str, float]
         raise RuntimeError("Power-law regression failed to converge") from e
 
     a, b = popt
-    a_std, b_std = np.sqrt(np.diag(pcov))
+    perr = np.sqrt(np.maximum(np.diag(pcov), 0))
+    a_std, b_std = perr 
+
 
     # Goodness of fit (R^2)
     residuals = height - power_law(time, a, b)
     ss_res = np.sum(residuals**2)
     ss_tot = np.sum((height - np.mean(height))**2)
-    r_squared = 1.0 - ss_res / ss_tot
+    if ss_tot == 0:
+        r_squared = float("nan")
+    else:
+        r_squared = 1.0 - ss_res / ss_tot
+
 
     return {
         "a": float(a),
