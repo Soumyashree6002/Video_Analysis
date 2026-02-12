@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'rea
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadVideo } from '../services/api';
 
-const VideoUploader = ({ onUploadComplete, onError }) => {
+const VideoUploader = ({ onUploadComplete, onError, onCancel }) => {
   const [uploading, setUploading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -56,7 +56,7 @@ const VideoUploader = ({ onUploadComplete, onError }) => {
       onUploadComplete?.(response, videoUri);
     } catch (error) {
       if (error.name === 'AbortError') {
-        onCancel && onCancel();
+        onCancel?.();
       } else {
         console.error('Upload error:', error);
         onError?.(error.message || 'Failed to upload video');

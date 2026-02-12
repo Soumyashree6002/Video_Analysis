@@ -79,22 +79,22 @@ const ResultsScreen = () => {
         
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Slope</Text>
+            <Text style={styles.statLabel}>Coefficient (a)</Text>
             <Text style={styles.statValue}>
-              {analysisResults.slope.toFixed(6)}
+              {analysisResults.a.toFixed(6)}
             </Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Intercept</Text>
+            <Text style={styles.statLabel}>Exponent (b)</Text>
             <Text style={styles.statValue}>
-              {analysisResults.intercept.toFixed(6)}
+              {analysisResults.b.toFixed(6)}
             </Text>
           </View>
-          {analysisResults.r_value && (
+          {analysisResults.r_squared && (
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>R Value</Text>
+              <Text style={styles.statLabel}>R²</Text>
               <Text style={styles.statValue}>
-                {analysisResults.r_value.toFixed(6)}
+                {analysisResults.r_squared.toFixed(6)}
               </Text>
             </View>
           )}

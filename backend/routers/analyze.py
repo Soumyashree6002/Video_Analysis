@@ -27,9 +27,9 @@ class AnalysisResponse(BaseModel):
     """Response model for analysis results."""
     video_id: str
     viscosity: float
-    slope: float
-    intercept: float
-    r_value: Optional[float] = None
+    a: float  # Coefficient from power-law regression
+    b: float  # Exponent from power-law regression
+    r_squared: Optional[float] = None
     graph_url: str
     message: str
 
