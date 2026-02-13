@@ -111,12 +111,13 @@ def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict
         # Calculate height change relative to reference (current - reference)
         # This gives the rise in liquid level from the initial position
         height_change_cm = current_height_cm - reference_height_cm
+        height_change_mm = height_change_cm * 10
         
         # Store relative time from start
         relative_time = timestamp - start_time
         
         time_data.append(relative_time)
-        height_data.append(height_change_cm)
+        height_data.append(height_change_mm)
     
     if len(time_data) < 2:
         raise ValueError("Need at least 2 data points for analysis")
