@@ -95,6 +95,6 @@ def power_law_regression(time_data: list, height_data: list) -> Dict[str, float]
     }
 
 def calculate_viscosity(a: float) -> float:
-    viscosity = 1924.5021*(a^-2.23174)
+    viscosity = 1924.5021*(a**(-2.23174))
     
     return float(viscosity)

@@ -21,8 +21,6 @@ def generate_report(video_id: str, viscosity: float, a: float, b: float,
     title_y = height - 1 * inch
     c.drawCentredString(width / 2, title_y, "Viscosity Analysis Report")
 
-    c.setFont("Helvetica", 10)
-    c.drawString(1 * inch, title_y - 0.3 * inch, f"Video ID: {video_id}")
 
     graph_y = title_y - 1 * inch
     graph_width = 6 * inch

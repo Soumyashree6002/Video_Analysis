@@ -213,7 +213,7 @@ def generate_graph(video_id: str, time_data: List[float], height_data: List[floa
     
     # Labels and title
     plt.xlabel('Time (s)', fontsize=12, fontweight='bold')
-    plt.ylabel('Height Change (cm)', fontsize=12, fontweight='bold')
+    plt.ylabel('Height Change (mm)', fontsize=12, fontweight='bold')
     plt.title('Liquid Height vs Time', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
