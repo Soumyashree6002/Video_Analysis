@@ -11,7 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 const getBaseUrl = () => {
   if (__DEV__) {
     // Change this to your computer's IP address when testing on physical device
-    return 'http://10.145.65.239:8000/api/v1';
+    return 'http://10.145.23.224:8000/api/v1';
   }
   return 'https://your-production-api.com/api/v1';
 };

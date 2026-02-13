@@ -18,12 +18,10 @@ const CalibrationDistanceScreen = () => {
 
   const { point1, point2 } = calibrationPoints || {};
 
-  // Calculate pixel distance for reference
+  // Calculate pixel distance for reference (vertical distance only, matching backend)
   const calculatePixelDistance = () => {
     if (!point1 || !point2) return null;
-    const dx = point2.x - point1.x;
-    const dy = point2.y - point1.y;
-    return Math.sqrt(dx * dx + dy * dy);
+    return Math.abs(point2.y - point1.y);
   };
 
   const pixelDistance = calculatePixelDistance();

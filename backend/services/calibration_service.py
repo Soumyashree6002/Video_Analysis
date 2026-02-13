@@ -14,23 +14,22 @@ class CalibrationService:
     
     def calibrate_manual(self, video_id: str, distance_cm: float, reference_pixel_distance: float = None) -> float:
         """
-        Perform manual calibration using a known distance.
+        Perform manual calibration using pixels per centimeter.
         
         Args:
             video_id: Unique video identifier
-            distance_cm: Real-world distance in centimeters
-            reference_pixel_distance: Optional reference pixel distance (if not provided, uses default)
+            distance_cm: Number of pixels per centimeter (e.g., 150 means 1 cm = 150 pixels)
+            reference_pixel_distance: Not used (kept for backward compatibility)
         
         Returns:
             cm_per_pixel conversion factor
         """
-        # If no reference pixel distance provided, use a default based on typical screen sizes
-        # This is a simplified approach - in practice, you might need frame dimensions
-        if reference_pixel_distance is None:
-            # Default assumption: 100 pixels = distance_cm (user should provide actual measurement)
-            reference_pixel_distance = 100.0
+        # User input represents pixels per cm (e.g., 150 means 1 cm = 150 pixels)
+        # So cm_per_pixel = 1 cm / pixels_per_cm
+        if distance_cm <= 0:
+            raise ValueError("Pixels per centimeter must be greater than zero")
         
-        cm_per_pixel = calculate_cm_per_pixel(reference_pixel_distance, distance_cm)
+        cm_per_pixel = 1.0 / distance_cm
         self._calibrations[video_id] = cm_per_pixel
         
         return cm_per_pixel

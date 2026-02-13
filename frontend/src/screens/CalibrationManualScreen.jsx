@@ -41,18 +41,18 @@ const CalibrationManualScreen = () => {
       <View style={styles.header}>
         <Text style={styles.title}>Manual Calibration</Text>
         <Text style={styles.subtitle}>
-          Enter the real-world distance in centimeters
+          Enter how many pixels equal 1 centimeter
         </Text>
       </View>
       
       <View style={styles.content}>
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>Distance (cm)</Text>
+          <Text style={styles.label}>Pixels per cm</Text>
           <TextInput
             style={styles.input}
             value={distance}
             onChangeText={setDistance}
-            placeholder="Enter distance"
+            placeholder="e.g., 150"
             keyboardType="decimal-pad"
             autoFocus
           />
@@ -70,7 +70,7 @@ const CalibrationManualScreen = () => {
         
         <View style={styles.infoContainer}>
           <Text style={styles.infoText}>
-            This distance will be used as a reference for pixel-to-centimeter conversion.
+            Enter the number of pixels that equal 1 centimeter in your video. For example, if you enter 150, it means 1 cm = 150 pixels.
           </Text>
         </View>
       </View>
