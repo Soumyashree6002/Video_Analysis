@@ -115,8 +115,9 @@ def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict
         
         # Store relative time from start
         relative_time = timestamp - start_time
+        relative_time_min = relative_time / 60
         
-        time_data.append(relative_time)
+        time_data.append(relative_time_min)
         height_data.append(height_change_mm)
     
     if len(time_data) < 2:
