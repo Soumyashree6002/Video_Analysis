@@ -7,6 +7,7 @@ from typing import Optional, List
 
 from backend.services.analysis_service import analyze_viscosity
 from backend.services.calibration_service import calibration_service
+from backend.services.reference_service import reference_service
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
 
@@ -100,7 +101,16 @@ async def analyze(background_tasks: BackgroundTasks, request: AnalyzeRequest):
     time_range = _time_ranges[request.video_id]
     start_time = time_range['start_time']
     end_time = time_range['end_time']
-    
+
+    # Ensure reference height has been selected
+    try:
+        reference_service.get_reference(request.video_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Reference height must be selected before analysis."
+        )
+
     try:
         # Perform analysis
         results = analyze_viscosity(request.video_id, start_time, end_time)

@@ -10,11 +10,13 @@ from backend.core.config import settings
 from backend.utils.file_utils import get_graph_path
 from backend.utils.math_utils import power_law_regression, calculate_viscosity
 from backend.services.calibration_service import calibration_service
+from backend.services.reference_service import reference_service
 from backend.services.video_service import extract_frames_in_range
 
 _analysis_cache = {}
 
-def extract_height_from_frame(frame: np.ndarray, cm_per_pixel: float) -> float:
+
+def extract_topmost_y_from_frame(frame: np.ndarray) -> float | None:
     """
     Extract liquid height from a video frame using color-based detection.
     
@@ -30,40 +32,33 @@ def extract_height_from_frame(frame: np.ndarray, cm_per_pixel: float) -> float:
     """
     # Convert to HSV for better color detection
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    
+
     # Define range for blue color
     lower_blue = np.array([88, 45, 40])
     upper_blue = np.array([130, 255, 255])
-    
+
     # Create mask for blue color
     mask = cv2.inRange(hsv, lower_blue, upper_blue)
-    
+
     # Apply morphological operations to clean up the mask
     kernel = np.ones((5, 5), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    
+
     # Find contours
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
+
     if contours:
         # Find the largest contour (assuming it's the liquid)
         largest_contour = max(contours, key=cv2.contourArea)
         
         # Get the topmost point of the contour (liquid front)
         topmost = tuple(largest_contour[largest_contour[:, :, 1].argmin()][0])
-        
-        # Calculate height from bottom of frame to liquid surface
-        height = frame.shape[0]  # Get frame height
-        pixel_height = height - topmost[1]  # topmost[1] is the y-coordinate
-        
-        # Convert to centimeters
-        height_cm = pixel_height * cm_per_pixel
-        
-        return height_cm
-    else:
-        # No liquid detected, return 0
-        return 0.0
+        # Return the y-coordinate of the topmost point (pixels from top of frame)
+        return float(topmost[1])
+
+    # No liquid detected
+    return None
 
 
 def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict:
@@ -83,42 +78,44 @@ def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict
         cm_per_pixel = calibration_service.get_calibration(video_id)
     except ValueError as e:
         raise ValueError(f"Video must be calibrated before analysis: {e}")
-    
+
+    # Get user-selected reference height (in pixels from top of frame)
+    try:
+        reference_y = reference_service.get_reference(video_id)
+    except ValueError as e:
+        raise ValueError(f"Reference height must be selected before analysis: {e}")
+
     # Extract frames in the specified time range
     frames_data = extract_frames_in_range(video_id, start_time, end_time)
-    
+
     if len(frames_data) == 0:
         raise ValueError("No frames found in the specified time range")
-    
-    # Get reference height from the first frame
-    first_frame = frames_data[0]['frame']
-    reference_height_cm = extract_height_from_frame(first_frame, cm_per_pixel)
-    
-    if reference_height_cm == 0.0:
-        raise ValueError("No liquid detected in first frame - cannot set reference point")
-    
-    # Extract height for each frame
+
+    # Extract height (relative to reference) for each frame
     time_data = []
     height_data = []
     
     for frame_info in frames_data:
         timestamp = frame_info['timestamp']
         frame = frame_info['frame']
-        
-        # Extract height using the existing function
-        current_height_cm = extract_height_from_frame(frame, cm_per_pixel)
-        
-        # Calculate height change relative to reference (current - reference)
-        # This gives the rise in liquid level from the initial position
-        height_change_cm = current_height_cm - reference_height_cm
-        height_change_mm = height_change_cm * 10
+
+        # Detect topmost liquid surface position in pixels from top
+        topmost_y = extract_topmost_y_from_frame(frame)
+        if topmost_y is None:
+            # Skip frames where liquid is not detected
+            continue
+
+        # Height in centimeters relative to user-selected reference:
+        # positive when the liquid surface moves upward (toward top of frame)
+        height_cm = (reference_y - topmost_y) * cm_per_pixel
+        height_mm = height_cm * 10
         
         # Store relative time from start
         relative_time = timestamp - start_time
         relative_time_min = relative_time / 60
-        
+
         time_data.append(relative_time_min)
-        height_data.append(height_change_mm)
+        height_data.append(height_mm)
     
     if len(time_data) < 2:
         raise ValueError("Need at least 2 data points for analysis")

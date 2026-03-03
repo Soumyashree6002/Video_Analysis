@@ -195,14 +195,14 @@ const VideoTrimScreen = () => {
     }
 
     try {
-        await selectTimeRange(videoId, cleanStart, cleanEnd);
-        setTimeRange(cleanStart, cleanEnd);
-        navigation.navigate('CalibrationChoice');
+      await selectTimeRange(videoId, cleanStart, cleanEnd);
+      setTimeRange(cleanStart, cleanEnd);
+      navigation.navigate('ReferenceSelection');
     } catch (error) {
-        console.error('Error selecting time range:', error);
-        Alert.alert('Error', 'Failed to save time range. Please try again.');
-        }
-    };
+      console.error('Error selecting time range:', error);
+      Alert.alert('Error', 'Failed to save time range. Please try again.');
+    }
+  };
 
   return (
     <View style={styles.container}>

@@ -16,7 +16,7 @@ const MAX_ZOOM = 5.0;
 // Use percentage of screen height instead of fixed height
 const IMAGE_HEIGHT = SCREEN_HEIGHT * 0.5; // 50% of screen height
 
-const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
+const PrecisionPointSelector = ({ imageUri, onPointsSelected, onReferenceSelected, enableSecondPoint = true }) => {
   // Image dimensions and layout
   const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 });
   const [imageLayout, setImageLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
@@ -177,7 +177,9 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
   const handleSetPoint1 = () => {
     const coord = getImageCoordinateUnderCrosshair();
     setPoint1(coord);
-    if (point2) {
+    // Notify single-point listeners (e.g., reference height selection)
+    onReferenceSelected?.(coord);
+    if (enableSecondPoint && point2) {
       onPointsSelected?.([coord, point2]);
     }
   };
@@ -202,7 +204,7 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
       if (point2) {
         onPointsSelected?.([newPoint, point2]);
       }
-    } else if (pointIndex === 2 && point2) {
+    } else if (enableSecondPoint && pointIndex === 2 && point2) {
       const newPoint = {
         x: Math.max(0, Math.min(imageNaturalSize.width, point2.x + delta.x)),
         y: Math.max(0, Math.min(imageNaturalSize.height, point2.y + delta.y)),
@@ -428,30 +430,32 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
               Set Point 1
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.setButton, point2 && styles.setButtonActive]}
-            onPress={handleSetPoint2}
-          >
-            <Text style={[styles.setButtonText, point2 && styles.setButtonTextActive]}>
-              Set Point 2
-            </Text>
-          </TouchableOpacity>
+          {enableSecondPoint && (
+            <TouchableOpacity
+              style={[styles.setButton, point2 && styles.setButtonActive]}
+              onPress={handleSetPoint2}
+            >
+              <Text style={[styles.setButtonText, point2 && styles.setButtonTextActive]}>
+                Set Point 2
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Coordinate display */}
-        {(point1 || point2) && (
+        {(point1 || (enableSecondPoint && point2)) && (
           <View style={styles.coordinateDisplay}>
             {point1 && (
               <Text style={styles.coordinateText}>
                 Point 1: ({point1.x.toFixed(1)}, {point1.y.toFixed(1)}) px
               </Text>
             )}
-            {point2 && (
+            {enableSecondPoint && point2 && (
               <Text style={styles.coordinateText}>
                 Point 2: ({point2.x.toFixed(1)}, {point2.y.toFixed(1)}) px
               </Text>
             )}
-            {distance && (
+            {enableSecondPoint && distance && (
               <Text style={[styles.coordinateText, styles.distanceText]}>
                 Distance: {distance.toFixed(2)} px
               </Text>
@@ -460,7 +464,7 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
         )}
 
         {/* Fine adjustment controls */}
-        {(point1 || point2) && (
+        {(point1 || (enableSecondPoint && point2)) && (
           <View style={styles.adjustmentSection}>
             <Text style={styles.adjustmentLabel}>
               Fine Adjust (Step: {stepSize}px)
@@ -512,7 +516,7 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
               </View>
             )}
 
-            {point2 && (
+            {enableSecondPoint && point2 && (
               <View style={styles.adjustmentGroup}>
                 <Text style={styles.adjustmentGroupLabel}>Point 2:</Text>
                 <View style={styles.arrowGrid}>
@@ -558,33 +562,38 @@ const PrecisionPointSelector = ({ imageUri, onPointsSelected }) => {
             style={[styles.resetButton, !point1 && styles.resetButtonDisabled]}
             onPress={() => {
               setPoint1(null);
-              if (point2) onPointsSelected?.([null, point2]);
+              if (enableSecondPoint && point2) onPointsSelected?.([null, point2]);
             }}
             disabled={!point1}
           >
             <Text style={styles.resetButtonText}>Reset Point 1</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.resetButton, !point2 && styles.resetButtonDisabled]}
-            onPress={() => {
-              setPoint2(null);
-              if (point1) onPointsSelected?.([point1, null]);
-            }}
-            disabled={!point2}
-          >
-            <Text style={styles.resetButtonText}>Reset Point 2</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.resetButton}
-            onPress={() => {
-              setPoint1(null);
-              setPoint2(null);
-              resetView();
-              onPointsSelected?.(null);
-            }}
-          >
-            <Text style={styles.resetButtonText}>Reset All</Text>
-          </TouchableOpacity>
+          {enableSecondPoint && (
+            <TouchableOpacity
+              style={[styles.resetButton, !point2 && styles.resetButtonDisabled]}
+              onPress={() => {
+                setPoint2(null);
+                if (point1) onPointsSelected?.([point1, null]);
+              }}
+              disabled={!point2}
+            >
+              <Text style={styles.resetButtonText}>Reset Point 2</Text>
+            </TouchableOpacity>
+          )}
+          {enableSecondPoint && (
+            <TouchableOpacity
+              style={styles.resetButton}
+              onPress={() => {
+                setPoint1(null);
+                setPoint2(null);
+                resetView();
+                onPointsSelected?.(null);
+                onReferenceSelected?.(null);
+              }}
+            >
+              <Text style={styles.resetButtonText}>Reset All</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </View>

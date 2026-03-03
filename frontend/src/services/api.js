@@ -11,7 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 const getBaseUrl = () => {
   if (__DEV__) {
     // Change this to your computer's IP address when testing on physical device
-    return 'http://10.145.23.224:8000/api/v1';
+    return 'http://10.145.102.24:8000/api/v1';
   }
   return 'https://your-production-api.com/api/v1';
 };
@@ -159,6 +159,20 @@ export const calibrateTap = async (videoId, point1, point2, realDistanceCm) => {
 export const analyzeViscosity = async (videoId) => {
   const response = await api.post('/analyze', {
     video_id: videoId,
+  });
+  return response.data;
+};
+
+/**
+ * Set reference height (y-coordinate in pixels) for a video.
+ * @param {string} videoId - Video identifier
+ * @param {number} referenceY - Y-coordinate of liquid surface in pixels (from top of frame)
+ * @returns {Promise<Object>}
+ */
+export const setReferenceHeight = async (videoId, referenceY) => {
+  const response = await api.post('/reference', {
+    video_id: videoId,
+    reference_y: referenceY,
   });
   return response.data;
 };

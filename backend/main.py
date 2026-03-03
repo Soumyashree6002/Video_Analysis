@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from backend.core.config import settings
-from backend.routers import upload, frames, calibrate, analyze, report
+from backend.routers import upload, frames, calibrate, analyze, report, reference
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -36,6 +36,7 @@ app.include_router(frames.router, prefix="/api/v1")
 app.include_router(calibrate.router, prefix="/api/v1")
 app.include_router(analyze.router, prefix="/api/v1")
 app.include_router(report.router, prefix="/api/v1")
+app.include_router(reference.router, prefix="/api/v1")
 
 
 @app.get("/")

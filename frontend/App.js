@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 // Screens
 import UploadScreen from './src/screens/UploadScreen';
 import VideoTrimScreen from './src/screens/VideoTrimScreen';
+import ReferenceSelectionScreen from './src/screens/ReferenceSelectionScreen';
 import CalibrationChoiceScreen from './src/screens/CalibrationChoiceScreen';
 import CalibrationManualScreen from './src/screens/CalibrationManualScreen';
 import CalibrationTapScreen from './src/screens/CalibrationTapScreen';
@@ -35,6 +36,7 @@ export default function App() {
           >
             <Stack.Screen name="Upload" component={UploadScreen} />
             <Stack.Screen name="VideoTrim" component={VideoTrimScreen} />
+            <Stack.Screen name="ReferenceSelection" component={ReferenceSelectionScreen} />
             <Stack.Screen name="CalibrationChoice" component={CalibrationChoiceScreen} />
             <Stack.Screen name="CalibrationManual" component={CalibrationManualScreen} />
             <Stack.Screen name="CalibrationTap" component={CalibrationTapScreen} />

@@ -16,6 +16,8 @@ const useAnalysisStore = create((set) => ({
   // Calibration
   calibrationType: null, // 'manual' or 'tap'
   calibrationData: null,
+  // Reference height (y-coordinate in pixels from top of frame)
+  referenceY: null,
   
   // Analysis results
   analysisResults: null,
@@ -41,6 +43,10 @@ const useAnalysisStore = create((set) => ({
   setCalibrationPoints: (point1, point2) => set({ 
     calibrationPoints: { point1, point2 } 
   }),
+
+  setReference: (referenceY) => set({
+    referenceY,
+  }),
   
   setAnalysisResults: (results) => set({
     analysisResults: results,
@@ -55,6 +61,7 @@ const useAnalysisStore = create((set) => ({
     endTime: null,
     calibrationType: null,
     calibrationData: null,
+    referenceY: null,
     analysisResults: null,
     graphUrl: null,
   }),

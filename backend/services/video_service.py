@@ -47,6 +47,42 @@ def extract_first_frame(video_id: str) -> Path:
         cap.release()
 
 
+def extract_frame_at_time(video_id: str, timestamp: float):
+    """
+    Extract a single frame at a given timestamp (in seconds).
+    """
+    video_path = get_video_path(video_id)
+
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise HTTPException(status_code=500, detail="Failed to open video file")
+
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            raise HTTPException(status_code=500, detail="Invalid FPS detected")
+
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        safe_timestamp = max(0.0, float(timestamp))
+        frame_index = int(safe_timestamp * fps)
+
+        if frame_index >= frame_count:
+            frame_index = max(0, frame_count - 1)
+
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            raise HTTPException(status_code=500, detail="Failed to read frame at requested time")
+
+        return frame
+    finally:
+        cap.release()
+
+
 def get_video_info(video_id: str) -> dict:
     video_path = get_video_path(video_id)
 
