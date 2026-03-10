@@ -4,14 +4,9 @@
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 
-// Base API URL - update this to match your backend server
-// For Android emulator, use 10.0.2.2 instead of localhost
-// For iOS simulator, use localhost
-// For physical device, use your computer's IP address
 const getBaseUrl = () => {
   if (__DEV__) {
-    // Change this to your computer's IP address when testing on physical device
-    return 'http://10.145.102.24:8000/api/v1';
+    return 'http://10.145.19.175:8000/api/v1';
   }
   return 'https://your-production-api.com/api/v1';
 };
