@@ -21,6 +21,11 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.videoanalysisapp"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d07432a6-5b75-499a-8354-fcd82e8b1ebc"
+      }
     }
   }
 }
