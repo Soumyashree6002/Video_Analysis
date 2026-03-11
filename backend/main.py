@@ -13,7 +13,9 @@ from backend.routers import upload, frames, calibrate, analyze, report, referenc
 app = FastAPI(
     title="Video Viscosity Analysis API",
     description="Research-grade API for analyzing liquid viscosity from video",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url=None,
+    redoc_url=None
 )
 
 # Configure CORS for mobile app
