@@ -49,9 +49,6 @@ const UploadScreen = () => {
           <Text style={styles.infoText}>
             • Supported formats: MP4, MOV, AVI, MKV
           </Text>
-          <Text style={styles.infoText}>
-            • Large files (&gt;200MB) are supported
-          </Text>
         </View>
       </View>
     </View>
