@@ -107,7 +107,7 @@ def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict
 
         # Height in centimeters relative to user-selected reference:
         # positive when the liquid surface moves upward (toward top of frame)
-        height_cm = (reference_y - topmost_y) * cm_per_pixel
+        height_cm = abs(reference_y - topmost_y) * cm_per_pixel
         height_mm = height_cm * 10
         
         # Store relative time from start
@@ -131,6 +131,7 @@ def analyze_viscosity(video_id: str, start_time: float, end_time: float) -> Dict
         if t > min_positive_value and h > min_positive_value:
             filtered_time.append(t)
             filtered_height.append(h)
+            print(f"Time: {t}, Height: {h}")
     
     if len(filtered_time) < 2:
         raise ValueError("Not enough valid data points for power-law regression (need time > 0 and height > 0)")
@@ -210,7 +211,7 @@ def generate_graph(video_id: str, time_data: List[float], height_data: List[floa
         plt.plot(time_array, fitted_curve, 'r-', linewidth=2, label=f'Fitted Curve: y = {a:.4f}x^{b:.4f}')
     
     # Labels and title
-    plt.xlabel('Time (s)', fontsize=12, fontweight='bold')
+    plt.xlabel('Time (min)', fontsize=12, fontweight='bold')
     plt.ylabel('Height Change (mm)', fontsize=12, fontweight='bold')
     plt.title('Liquid Height vs Time', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
