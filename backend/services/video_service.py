@@ -60,6 +60,8 @@ def extract_frame_at_time(video_id: str, timestamp: float):
     if not cap.isOpened():
         raise HTTPException(status_code=500, detail="Failed to open video file")
 
+    cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 1)
+
     try:
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0:
