@@ -4,14 +4,7 @@
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const getBaseUrl = () => {
-  if (__DEV__) {
-    return 'http://10.145.19.175:8000/api/v1';
-  }
-  return 'https://your-production-api.com/api/v1';
-};
-
-const API_BASE_URL = getBaseUrl();
+const API_BASE_URL = 'http://10.99.183.160:8000/api/v1';
 const BASE_URL_WITHOUT_API = API_BASE_URL.replace('/api/v1', '');
 
 // Create axios instance
