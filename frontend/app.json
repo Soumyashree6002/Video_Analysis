@@ -20,7 +20,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.paperviscometer"
+      "package": "com.anonymous.paperviscometer",
+      "usesCleartextTraffic": true
     },
     "extra": {
       "eas": {
