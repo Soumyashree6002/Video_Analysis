@@ -73,7 +73,7 @@ const ResultsScreen = () => {
         <View style={styles.resultCard}>
           <Text style={styles.resultLabel}>Viscosity</Text>
           <Text style={styles.resultValue}>
-            {analysisResults.viscosity.toFixed(6)} Pa·s
+            {analysisResults.viscosity.toFixed(6)} mPa.s
           </Text>
         </View>
         

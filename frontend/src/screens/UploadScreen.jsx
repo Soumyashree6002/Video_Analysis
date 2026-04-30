@@ -31,7 +31,7 @@ const UploadScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Video Viscosity Analysis</Text>
+        <Text style={styles.title}>Liquid Imbibition Flow Analysis</Text>
         <Text style={styles.subtitle}>Upload a video to begin analysis</Text>
       </View>
       
